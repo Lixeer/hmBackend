@@ -1,0 +1,113 @@
+name: Build and Release Backend CSharp
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g., v1.4.0)'
+        required: true
+        default: 'v1.4.0'
+      release_title:
+        description: 'Release Title'
+        required: true
+        default: 'Patient Monitor C# Backend - Release v1.4.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore patient-monitor-csharp/PatientMonitor.sln
+
+      - name: Publish Windows x64
+        run: |
+          dotnet publish patient-monitor-csharp/PatientMonitor.Api/PatientMonitor.Api.csproj \
+            -c Release \
+            -r win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o publish-win-x64
+
+      - name: Publish Windows x86
+        run: |
+          dotnet publish patient-monitor-csharp/PatientMonitor.Api/PatientMonitor.Api.csproj \
+            -c Release \
+            -r win-x86 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o publish-win-x86
+
+      - name: Publish Linux x64
+        run: |
+          dotnet publish patient-monitor-csharp/PatientMonitor.Api/PatientMonitor.Api.csproj \
+            -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o publish-linux-x64
+
+      - name: Package Release Assets
+        run: |
+          # Package Windows x64
+          cd publish-win-x64
+          zip -r ../patient-monitor-backend-win-x64.zip .
+          cd ..
+          
+          # Package Windows x86
+          cd publish-win-x86
+          zip -r ../patient-monitor-backend-win-x86.zip .
+          cd ..
+          
+          # Package Linux x64
+          cd publish-linux-x64
+          tar -czvf ../patient-monitor-backend-linux-x64.tar.gz .
+          cd ..
+
+      - name: Create Release Notes Template
+        run: |
+          cat << 'EOF' > release-notes.md
+          # Patient Monitor C# Backend - ${{ github.event.inputs.tag_name }}
+
+          This release contains the compiled **self-contained single-file executables** of the Patient Monitor C# Backend.
+
+          ## 🚀 Features
+          * **Self-Contained**: The .NET 8.0 runtime is embedded. No need to install .NET SDK or Runtime on the host machine.
+          * **Single-File**: Bundles all DLLs and configurations into a single executable.
+          * **Multi-Platform Support**: Build packages provided for Windows (x64/x86) and Linux (x64).
+
+          ## 📦 Included Assets
+          * `patient-monitor-backend-win-x64.zip` (Windows 64-bit executable)
+          * `patient-monitor-backend-win-x86.zip` (Windows 32-bit executable)
+          * `patient-monitor-backend-linux-x64.tar.gz` (Linux 64-bit executable)
+
+          ## 🐳 Deployment Notes (Docker-Friendly)
+          These executables are fully portable:
+          * **Windows**: Extract `patient-monitor-backend-win-x64.zip` and run `PatientMonitor.Api.exe`.
+          * **Linux**: Extract `patient-monitor-backend-linux-x64.tar.gz`, grant execution permissions (`chmod +x PatientMonitor.Api`), and run `./PatientMonitor.Api`.
+          
+          ---
+          *Built automatically via GitHub Actions*
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.event.inputs.tag_name }} \
+            patient-monitor-backend-win-x64.zip \
+            patient-monitor-backend-win-x86.zip \
+            patient-monitor-backend-linux-x64.tar.gz \
+            --title "${{ github.event.inputs.release_title }}" \
+            --notes-file release-notes.md
