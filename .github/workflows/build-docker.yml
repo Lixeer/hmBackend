@@ -1,0 +1,87 @@
+name: Build and Release Unified Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g., v1.0.1)'
+        required: true
+        default: 'v1.0.1'
+      release_title:
+        description: 'Release Title'
+        required: true
+        default: 'Patient Monitor Unified Release v1.0.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-docker-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t patient-monitor:${{ github.event.inputs.tag_name }} \
+            -t patient-monitor:latest \
+            -f docker/Dockerfile \
+            docker/
+
+      - name: Export and Compress Docker Image
+        run: |
+          echo "Saving and compressing docker image..."
+          docker save patient-monitor:${{ github.event.inputs.tag_name }} | gzip > patient-monitor-image.tar.gz
+          echo "Export completed successfully. File size:"
+          du -sh patient-monitor-image.tar.gz
+
+      - name: Create Release Notes Template
+        run: |
+          cat << 'EOF' > docker-release-notes.md
+          # Patient Monitor Unified Docker Image - ${{ github.event.inputs.tag_name }}
+
+          This release contains the **pre-built unified Docker image** containing both the C# backend and Vue 3 frontend as a non-separated monolithic container.
+
+          ## 🚀 Deployment Instructions
+          You can deploy this image directly to any server running Docker:
+
+          ### 1. Download and load the image
+          Download the `patient-monitor-image.tar.gz` archive, copy it to your server, and run:
+          ```bash
+          # Load the image
+          docker load -i patient-monitor-image.tar.gz
+          ```
+
+          ### 2. Run the container
+          Run the loaded image as a container mapping port 80:
+          ```bash
+          docker run -d \
+            -p 80:80 \
+            --name patient-monitor \
+            --restart always \
+            patient-monitor:${{ github.event.inputs.tag_name }}
+          ```
+
+          ### 3. Verify
+          Open your browser and visit `http://<your-server-ip>` to access the dashboard.
+          
+          ---
+          *Built automatically via GitHub Actions*
+          EOF
+
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Try to create release, if it exists, upload the asset to the existing release
+          gh release create ${{ github.event.inputs.tag_name }} patient-monitor-image.tar.gz \
+            --title "${{ github.event.inputs.release_title }}" \
+            --notes-file docker-release-notes.md \
+            --clobber || \
+          gh release upload ${{ github.event.inputs.tag_name }} patient-monitor-image.tar.gz --clobber
