@@ -16,8 +16,9 @@ RUN curl -L -o backend.tar.gz https://github.com/Lixeer/hmBackend/releases/downl
 
 # Download and extract Frontend Release v1.0.1
 RUN mkdir -p /usr/share/nginx/html && \
+    rm -rf /usr/share/nginx/html/* && \
     curl -L -o frontend.zip https://github.com/Lixeer/hmFront/releases/download/v1.0.1/patient-monitor-frontend.zip && \
-    unzip frontend.zip -d /usr/share/nginx/html && \
+    unzip -o frontend.zip -d /usr/share/nginx/html && \
     rm frontend.zip
 
 # Copy configuration files
